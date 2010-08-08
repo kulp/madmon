@@ -18,7 +18,11 @@ my $repores = HoN::S2Z::Honmod->new(create => 1, filename => $resfilepath);
 $repores->read;
 $repores->parse;
 
-for my $modfilename (glob "$applydir/*.honmod") {
+my @mods = glob "$applydir/*.honmod";
+
+# don't use foreach because we want to change @mods on the fly
+while (my $modfilename = shift @mods) {
+    # TODO retry logic
     apply_mod($modfilename);
 }
 
@@ -37,18 +41,14 @@ sub apply_mod
     my @res = map { HoN::S2Z->new(filename => $_) } @resfiles;
     my $prires = $res[0];
 
-    for my $req (@{ $modxml->{requirement} }) {
-        if (not $repores->have($req->{name})) {
-            # TODO upgrade to die()
-            warn "Missing requirement $req->{name}";
-        }
+    for my $req (values %{ $modxml->{requirement}->pointer }) {
+        die "Missing requirement $req"
+            unless $repores->have($req);
     }
 
-    for my $bad (@{ $modxml->{incompatibility} }) {
-        if ($repores->have($bad->{name})) {
-            # TODO upgrade to die()
-            warn "Present incompatibility $bad->{name}";
-        }
+    for my $bad (values %{ $modxml->{incompatibility}->pointer }) {
+        die "Present incompatibility $bad"
+            if $repores->have($bad);
     }
 
     for my $copy (@{ $modxml->{copyfile} }) {
@@ -64,7 +64,6 @@ sub apply_mod
     }
 
     for my $edits (@{ $modxml->{editfile} }) {
-        my $pos = 0; # position in file
         my $filename = "$edits->{name}"; # force stringification of XML::Smart object
         say "Editing $filename ...";
         # search backward to find the last resources file that includes the file
@@ -76,7 +75,7 @@ sub apply_mod
 
                 my $str = $file->contents;
 
-                do_edit(\$str, $edits, \$pos);
+                do_edit(\$str, $edits);
 
                 my $member = Archive::Zip::Member->newFromString($str, $filename);
 
@@ -96,45 +95,65 @@ sub apply_mod
 
 sub do_edit
 {
-    # TODO move $pos into this function
-    my ($str, $edit, $pos) = @_;
-    #warn "not editing ".\$str." with $edit";
+    my ($str, $edit) = @_;
 
     # XXX use condition
     my $condition;
     my $len = 0;
+    my $pos = -1;
+
+    # XXX figure out why $len doesn't change when I think it should
 
     my $find = sub {
         my ($what) = @_;
-        say "... seeking ...";
         if (my $content = $what->{CONTENT}) {
-            $$pos = index $$str, $content, $$pos;
+            warn "content = $content";
+            $pos = index $$str, $content, $pos; # XXX +1
             $len = length $content;
         } elsif (local $_ = $what->{position}) {
             $len = 0;
 
-            /start|begin|head|before/ and $$pos = 0;
-            /end|tail|after|eof/      and $$pos = length $$str;
-            /(-?\d+)/                 and $$pos += $1;
+            /start|begin|head|before/ and $pos = 0;
+            /end|tail|after|eof/      and $pos = length $$str;
+            /(-?\d+)/                 and $pos += $1;
         }
+        say "... seeking to $pos ...";
     };
 
     my $insert = sub {
         my ($what) = @_;
         my $content = $what->{CONTENT};
-        say "... inserting ...";
+        say "... inserting $len characters ...";
+        warn "Bad position $pos", return if $pos < 0;
         for ($what->{position}) {
-            /before/ and substr($$str, $$pos       , 0) = $content;
-            /after/  and substr($$str, $$pos + $len, 0) = $content;
+            /before/ and substr($$str, $pos       , 0) = $content;
+            /after/  and substr($$str, $pos + $len, 0) = $content;
         }
     };
 
-    my $top = $edit->pointer;
-    for (@{ $top->{"/order"} }) {
-        my $what = $edit->{$_};
+    my $delete = sub {
+        my ($what) = @_;
+        say "... deleting $len characters ...";
+        warn "Bad position $pos", return if $pos < 0;
+        substr($$str, $pos, $len) = "";
+    };
+
+    my $replace = sub {
+        my ($what) = @_;
+        my $content = $what->{CONTENT};
+        my $len2 = length $content;
+        say "... replacing $len characters with $len2 characters ...";
+        warn "Bad position $pos", return if $pos < 0;
+        substr($$str, $pos, $len) = $content;
+    };
+
+    for (@{ $edit->pointer->{"/order"} }) {
+        my $what = $edit->{$_}->pointer;
         /find|search|seek/ and $find->($what);
         /condition/        and $condition = $what;
         /insert|add/       and $insert->($what);
+        /delete/           and $delete->($what);
+        /replace/          and $replace->($what);
     }
 }
 

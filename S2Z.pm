@@ -101,7 +101,7 @@ sub mods
 sub have
 {
     my ($self, $name) = @_;
-    return undef unless $name;
+    return unless $name;
     my %mods = map { $_->{name} => $_ } @{ $self->{applied_mods} };
     return $mods{$name};
 }
