@@ -4,7 +4,7 @@ use strict;
 use 5.10.0;
 
 use Archive::Zip qw(:ERROR_CODES :CONSTANTS);
-use XML::Simple;
+use XML::Smart;
 
 # TODO use my own naming / versioning ?
 my $default_comment = <<EOM;
@@ -101,6 +101,7 @@ sub mods
 sub have
 {
     my ($self, $name) = @_;
+    return undef unless $name;
     my %mods = map { $_->{name} => $_ } @{ $self->{applied_mods} };
     return $mods{$name};
 }

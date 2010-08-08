@@ -4,7 +4,7 @@ use strict;
 use 5.10.0;
 
 use Archive::Zip qw(:ERROR_CODES :CONSTANTS);
-use XML::Simple;
+use XML::Smart;
 
 use HoN::S2Z;
 
@@ -24,7 +24,11 @@ sub read
 
     my $xmlstr = $self->{xmlstr} = $zip->memberNamed("mod.xml");
 
-    return XMLin(scalar $xmlstr->contents);
+    my $xml = XML::Smart->new(scalar $xmlstr->contents);
+
+    $xml = $xml->cut_root;
+
+    return $xml;
 }
 
 1;
