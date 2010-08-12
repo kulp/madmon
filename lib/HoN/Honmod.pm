@@ -26,9 +26,13 @@ sub read
 
     my $xml = XML::Smart->new(scalar $xmlstr->contents);
 
-    $xml = $xml->cut_root;
+    return $self->{xml} = $xml->cut_root;
+}
 
-    return $xml;
+sub xml
+{
+    my $self = shift;
+    return $self->{xml} ||= $self->read(@_);
 }
 
 1;

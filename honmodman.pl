@@ -5,6 +5,9 @@ use strict;
 use feature qw(say);
 
 use XXX;
+
+use Algorithm::Dependency::Ordered;
+use Algorithm::Dependency::Source::HoA;
 use HoN::Honmod;
 use HoN::S2Z;
 use List::Util qw(first);
@@ -21,18 +24,41 @@ $repores->parse;
 
 my @mods = glob "$applydir/*.honmod";
 
-# don't use foreach because we want to change @mods on the fly
-while (my $modfilename = shift @mods) {
+my @modres = map { HoN::Honmod->new(filename => $_) } @mods;
+$_->read for @modres;
+
+my %deps;
+for my $m (@modres) {
+    my $xml = $m->xml;
+    my @reqs = grep { %$_ } map { $_->pointer } @{ $xml->{requirement} };
+    $deps{ $xml->{name} } = {
+        name => $xml->{name}->pointer,
+        # TODO version
+        reqs => \@reqs,
+        mod  => $m,
+    };
+}
+
+my %deptree = map {
+    $_->{name} => [ map { $_->{name} } @{ $_->{reqs} } ]
+} sort { +@{ $a->{reqs} } - +@{ $b->{reqs} } } values %deps;
+
+my $depsrc = Algorithm::Dependency::Source::HoA->new(\%deptree);
+my $depmkr = Algorithm::Dependency::Ordered->new(source => $depsrc) # TODO ignore_orphans
+    or die "Failed to create dependency tree resolver";
+
+my @ordered = map { $deps{$_}->{mod} } @{ $depmkr->schedule_all };
+
+for my $modres (@ordered) {
     # TODO retry logic
-    say "Trying to apply mod $modfilename ...";
-    apply_mod($modfilename);
+    say "Trying to apply mod " . $modres->{filename} . " ...";
+    apply_mod($modres);
 }
 
 sub apply_mod
 {
-    my ($modfilename) = @_;
-    my $modres = HoN::Honmod->new(filename => $modfilename);
-    my $modxml = $modres->read;
+    my ($modres) = @_;
+    my $modxml = $modres->xml;
 
     my $modname    = $modxml->{name};
     my $modversion = $modxml->{mmversion};
@@ -41,7 +67,8 @@ sub apply_mod
         ($a =~ /(\d+)/)[0] <=> ($b =~ /(\d+)/)[0]
     } grep !/$resfilename$/o, glob "$gamedir/resources*.s2z";
     my @res = map { HoN::S2Z->new(filename => $_) } @resfiles;
-    my $prires = $res[0];
+    die "Base resources file (resources0.s2z) not found"
+        unless $res[0]->{filename} ne "resources0.s2z";
 
     for my $req (values %{ $modxml->{requirement}->pointer }) {
         die "Missing requirement $req"
@@ -123,7 +150,6 @@ sub do_edit
             /end|tail|after|eof/      and $pos = length $$str;
             /(-?\d+)/                 and $pos += $1;
         } elsif (my $content = nodos trim $what->{CONTENT}) {
-            warn "content = $content";
             if ($up) {
                 $pos = index substr($$str, 0, $pos), $content;
             } else {
