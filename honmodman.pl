@@ -8,6 +8,7 @@ use XXX;
 use HoN::Honmod;
 use HoN::S2Z;
 use List::Util qw(first);
+use Text::Trim qw(trim);
 
 my $gamedir = "."; # XXX
 my $resfilename = "resources999.s2z";
@@ -23,6 +24,7 @@ my @mods = glob "$applydir/*.honmod";
 # don't use foreach because we want to change @mods on the fly
 while (my $modfilename = shift @mods) {
     # TODO retry logic
+    say "Trying to apply mod $modfilename ...";
     apply_mod($modfilename);
 }
 
@@ -63,13 +65,17 @@ sub apply_mod
         $repores->{zip}->addMember($newmember);
     }
 
+    # TODO read only on demand
+    $_->read for @res;
+
+    EDIT:
     for my $edits (@{ $modxml->{editfile} }) {
+        #XXX $edits->pointer;
         my $filename = "$edits->{name}"; # force stringification of XML::Smart object
         say "Editing $filename ...";
         # search backward to find the last resources file that includes the file
         # we need to change
-        SEARCH_RES:
-        for my $res ($repores, reverse map { $_->read; $_ } @res) {
+        for my $res ($repores, reverse @res) {
             if (my $file = $res->file($filename)) {
                 say "... found $filename in $res->{filename} ...";
 
@@ -85,12 +91,18 @@ sub apply_mod
                 $zip->addMember($member)
                     or die "Failed to add member";
 
-                last SEARCH_RES;
+                next EDIT;
             }
         }
     }
 
     $repores->installed($modname, $modversion);
+}
+
+sub nodos
+{
+    my @r = map { (my $x = $_) =~ s/\r//g; $x } @_;
+    return wantarray ? @r : $r[0];
 }
 
 sub do_edit
@@ -99,32 +111,34 @@ sub do_edit
 
     # XXX use condition
     my $condition;
+    my $pos = 0;
     my $len = 0;
-    my $pos = -1;
-
-    # XXX figure out why $len doesn't change when I think it should
 
     my $find = sub {
-        my ($what) = @_;
-        if (my $content = $what->{CONTENT}) {
-            warn "content = $content";
-            $pos = index $$str, $content, $pos; # XXX +1
-            $len = length $content;
-        } elsif (local $_ = $what->{position}) {
+        my ($what, $up) = @_;
+        if (local $_ = $what->{position}) {
             $len = 0;
 
             /start|begin|head|before/ and $pos = 0;
             /end|tail|after|eof/      and $pos = length $$str;
             /(-?\d+)/                 and $pos += $1;
+        } elsif (my $content = nodos trim $what->{CONTENT}) {
+            warn "content = $content";
+            if ($up) {
+                $pos = index substr($$str, 0, $pos), $content;
+            } else {
+                $pos = index $$str, $content, $pos; # XXX +1
+            }
+            $len = length $content;
         }
         say "... seeking to $pos ...";
     };
 
     my $insert = sub {
         my ($what) = @_;
-        my $content = $what->{CONTENT};
+        my $content = nodos $what->{CONTENT};
         say "... inserting $len characters ...";
-        warn "Bad position $pos", return if $pos < 0;
+        warn "Bad position $pos" and return if $pos < 0;
         for ($what->{position}) {
             /before/ and substr($$str, $pos       , 0) = $content;
             /after/  and substr($$str, $pos + $len, 0) = $content;
@@ -134,32 +148,30 @@ sub do_edit
     my $delete = sub {
         my ($what) = @_;
         say "... deleting $len characters ...";
-        warn "Bad position $pos", return if $pos < 0;
+        warn "Bad position $pos" and return if $pos < 0;
         substr($$str, $pos, $len) = "";
     };
 
     my $replace = sub {
         my ($what) = @_;
-        my $content = $what->{CONTENT};
+        my $content = nodos $what->{CONTENT};
         my $len2 = length $content;
         say "... replacing $len characters with $len2 characters ...";
-        warn "Bad position $pos", return if $pos < 0;
+        warn "Bad position $pos" and return if $pos < 0;
         substr($$str, $pos, $len) = $content;
     };
 
+    my %ctr;
     for (@{ $edit->pointer->{"/order"} }) {
-        my $what = $edit->{$_}->pointer;
-        /find|search|seek/ and $find->($what);
-        /condition/        and $condition = $what;
-        /insert|add/       and $insert->($what);
-        /delete/           and $delete->($what);
-        /replace/          and $replace->($what);
+        my $what = ${ $edit->{$_} }[ $ctr{$_}++ ]->pointer;
+        /(find|search|seek)(up)?/ and $find->($what, defined $2);
+        /condition/               and $condition = $what;
+        /insert|add/              and $insert->($what);
+        /delete/                  and $delete->($what);
+        /replace/                 and $replace->($what);
     }
 }
 
 $repores->save
     or die "Failed to write repo";
-
-#XXX $modxml;
-#XXX $res->mods;
 
