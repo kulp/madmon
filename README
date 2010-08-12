@@ -1,0 +1,16 @@
+madmon is a UNIX-flavo(u)red modifications manager for the game Heroes of
+Newerth, by S2 Games. It reads the .honmod format popularized by the program
+"HoN Modification Manager", which works well for .NET platforms, but which is
+rather inconvenient to use on Linux.
+
+The code is currently in developer pre-alpha stage. It is capable of applying
+some mods, but has not been rigorously tested, and does not support basic
+features such as dependency resolution.
+
+Further documentation is forthcoming.
+
+Heroes of Newerth / S2 Games:
+    http://www.heroesofnewerth.com/
+Hon Modification Manager:
+    http://forums.heroesofnewerth.com/showthread.php?t=25883
+
