@@ -143,15 +143,32 @@ sub fix_mod_name
     return $x;
 }
 
+sub check_condition
+{
+    my ($repores, $modres, $what) = @_;
+    my $sub = compile_condition($repores, $modres, $what);
+    my $ok = $sub->();
+    warn "Condition [ $what ] not met" unless $ok;
+
+    return $ok;
+}
+
 sub do_copies
 {
     my ($repores, $modres) = @_;
     my $modxml = $modres->xml;
 
+    COPY:
     for my $copy (grep { %$_ } @{ $modxml->{copyfile} }) {
         my $filename = $copy->{name};
         my $source = $copy->{source} || $filename;
         say "Copying $filename into repo ...";
+        if (my $what = $copy->{condition}) {
+            if (not check_condition($repores, $modres, $what)) {
+                warn "Conditions not met; skipping copy";
+                next COPY;
+            }
+        }
         my $member = $modres->{zip}->memberNamed($source)
             or die "Member named $source missing !";
         # TODO don't use stringification, it's probably inefficient
@@ -170,6 +187,13 @@ sub do_edits
     for my $edits (@{ $modxml->{editfile} }) {
         my $filename = "$edits->{name}"; # force stringification of XML::Smart object
         say "Editing $filename ...";
+
+        if (my $what = $edits->{condition}) {
+            if (not check_condition($repores, $modres, $what)) {
+                warn "Conditions not met; skipping edit";
+                next EDIT;
+            }
+        }
         # search backward to find the last resources file that includes the file
         # we need to change
         for my $res ($repores, reverse @$res) {
@@ -290,13 +314,6 @@ sub do_edit
     my $pos = 0;
     my $len = 0;
 
-    # XXX use condition
-    my $condition = sub {
-        my ($what) = @_;
-        my $sub = compile_condition($repores, $modres, $what);
-        #die "Conditions not implemented; unsafe to continue";
-    };
-
     my $find = sub {
         my ($what, $up) = @_;
         if (local $_ = $what->{position}) {
@@ -347,7 +364,6 @@ sub do_edit
     for (@{ $edit->pointer->{"/order"} }) {
         my $what = ${ $edit->{$_} }[ $ctr{$_}++ ]->pointer;
         /(find|search|seek)(up)?/ and $find->($what, defined $2);
-        /condition/               and $condition->($what);
         /insert|add/              and $insert->($what);
         /delete/                  and $delete->($what);
         /replace/                 and $replace->($what);
