@@ -12,6 +12,9 @@ use HoN::Honmod;
 use HoN::S2Z;
 use List::Util qw(first);
 use Text::Trim qw(trim);
+use Text::Balanced qw(extract_multiple
+                      extract_bracketed
+                      extract_quotelike);
 
 my $gamedir = "."; # XXX
 my $resfilename = "resources999.s2z";
@@ -22,50 +25,113 @@ my $repores = HoN::S2Z::Honmod->new(create => 1, filename => $resfilepath);
 $repores->read;
 $repores->parse;
 
-my @mods = glob "$applydir/*.honmod";
-
-my @modres = map { HoN::Honmod->new(filename => $_) } @mods;
-$_->read for @modres;
-
 my %orignames;
 my %normnames;
 
-my %deps;
-for my $m (@modres) {
-    my $xml = $m->xml;
-    my @reqs =
-        map { $_->{name} = fix_mod_name($_->{name}); $_ }
-        grep { %$_ }
-        map { $_->pointer }
-        @{ $xml->{requirement} };
-    my $origname = $xml->{name}->pointer;
-    my $name = fix_mod_name($origname);
-    $orignames{$name} = $origname;
-    $normnames{$origname} = $name;
-    $deps{ $name } = {
-        name => $name,
-        # TODO version
-        reqs => \@reqs,
-        mod  => $m,
-    };
+our %test = qw(
+    a   1
+    b   0
+    c   0
+    d   1
+    e   3
+);
+
+my @tests = (
+    [ qq('a' and not 'b' and not ('c' or not 'd')), 1 ],
+    [ qq('a' and not 'b'), 1 ],
+    [ qq('a' and 'b'), 0 ],
+);
+
+#for (@tests) {
+#    my $cond = compile_condition(undef, undef, $_->[0]);
+#    die "Failed test" unless int($cond->()) eq int($_->[1]);
+#}
+## XXX
+#die;
+climain(@ARGV) unless caller;
+
+################################################################################
+
+sub climain
+{
+    my ($applydir) = @_;
+    my $repores = create_repo($resfilepath);
+
+    my @mods = glob "$applydir/*.honmod";
+
+    my @modres = map { HoN::Honmod->new(filename => $_) } @mods;
+    $_->read for @modres;
+
+    my $ordered = calc_deps(\@modres);
+
+    for my $modres (@$ordered) {
+        say "Applying mod " . $modres->{filename} . " ...";
+        apply_mod($repores, $modres);
+    }
+
+    $repores->save
+        or die "Failed to write repo";
 }
 
-my %deptree = map {
-    $_->{name} => [ map { $_->{name} } @{ $_->{reqs} } ]
-} sort { +@{ $a->{reqs} } - +@{ $b->{reqs} } } values %deps;
+sub create_repo
+{
+    my ($resfilepath) = @_;
 
-my $depsrc = Algorithm::Dependency::Source::HoA->new(\%deptree);
-my $depmkr = Algorithm::Dependency::Ordered->new(source => $depsrc, ignore_orphans => 1) # TODO ignore_orphans
-    or die "Failed to create dependency tree resolver";
+    unlink $resfilepath;
+    my $repores = HoN::S2Z::Honmod->new(create => 1, filename => $resfilepath);
+    $repores->read;
+    $repores->parse;
 
-my $sched = $depmkr->schedule_all
-    or die "Failed to find a schedule to enable all mods";
-print "Going to apply mods:\n", map { "\t$orignames{$_}\n" } @$sched;
-my @ordered = map { $deps{$_}->{mod} } @$sched;
+    return $repores;
+}
 
-for my $modres (@ordered) {
-    say "Applying mod " . $modres->{filename} . " ...";
-    apply_mod($modres);
+sub calc_deps
+{
+    my ($modres) = @_;
+    my %deps;
+    for my $m (@$modres) {
+        my $xml = $m->xml;
+
+        sub cleanup {
+            map { $_->{name} = fix_mod_name($_->{name}); $_ }
+            grep { %$_ }
+            map { $_->pointer } @_
+        }
+
+        my @reqs    = cleanup @{ $xml->{requirement} };
+        my @afters  = cleanup @{ $xml->{applyafter} };
+        my @befores = cleanup @{ $xml->{applybefore} };
+        # TODO support applybefore
+
+        my $origname = $xml->{name}->pointer;
+        warn "<applybefore/> not yet supported, skipping '$origname'" and next if @befores;
+
+        my $name = fix_mod_name($origname);
+        $orignames{$name} = $origname;
+        $normnames{$origname} = $name;
+        $deps{ $name } = {
+            # TODO version
+            name    => $name,
+            reqs    => \@reqs,
+            afters  => \@afters,
+            befores => \@befores,
+            mod     => $m,
+        };
+    }
+
+    my %deptree = map {
+        $_->{name} => [ map { $_->{name} } @{ $_->{reqs} }, @{ $_->{afters} } ]
+    } sort { +@{ $a->{reqs} } - +@{ $b->{reqs} } } values %deps;
+
+    my $depsrc = Algorithm::Dependency::Source::HoA->new(\%deptree);
+    my $depmkr = Algorithm::Dependency::Ordered->new(source => $depsrc, ignore_orphans => 1)
+        or die "Failed to create dependency tree resolver";
+
+    my $sched = $depmkr->schedule_all
+        or die "Failed to find a schedule to enable all mods";
+    print "Going to apply mods:\n", map { "\t$orignames{$_}\n" } @$sched;
+    my @ordered = map { $deps{$_}->{mod} } @$sched;
+    return \@ordered;
 }
 
 # this is from the original HoN Modification Manager
@@ -77,15 +143,32 @@ sub fix_mod_name
     return $x;
 }
 
+sub check_condition
+{
+    my ($repores, $modres, $what) = @_;
+    my $sub = compile_condition($repores, $modres, $what);
+    my $ok = $sub->();
+    warn "Condition [ $what ] not met" unless $ok;
+
+    return $ok;
+}
+
 sub do_copies
 {
-    my ($modres) = @_;
+    my ($repores, $modres) = @_;
     my $modxml = $modres->xml;
 
+    COPY:
     for my $copy (grep { %$_ } @{ $modxml->{copyfile} }) {
         my $filename = $copy->{name};
         my $source = $copy->{source} || $filename;
         say "Copying $filename into repo ...";
+        if (my $what = $copy->{condition}) {
+            if (not check_condition($repores, $modres, $what)) {
+                warn "Conditions not met; skipping copy";
+                next COPY;
+            }
+        }
         my $member = $modres->{zip}->memberNamed($source)
             or die "Member named $source missing !";
         # TODO don't use stringification, it's probably inefficient
@@ -97,13 +180,20 @@ sub do_copies
 
 sub do_edits
 {
-    my ($modres, $res) = @_;
+    my ($repores, $modres, $res) = @_;
     my $modxml = $modres->xml;
 
     EDIT:
     for my $edits (@{ $modxml->{editfile} }) {
         my $filename = "$edits->{name}"; # force stringification of XML::Smart object
         say "Editing $filename ...";
+
+        if (my $what = $edits->{condition}) {
+            if (not check_condition($repores, $modres, $what)) {
+                warn "Conditions not met; skipping edit";
+                next EDIT;
+            }
+        }
         # search backward to find the last resources file that includes the file
         # we need to change
         for my $res ($repores, reverse @$res) {
@@ -112,7 +202,7 @@ sub do_edits
 
                 my $str = $file->contents;
 
-                do_edit(\$str, $edits);
+                do_edit($repores, $modres, \$str, $edits);
 
                 my $member = Archive::Zip::Member->newFromString($str, $filename);
 
@@ -130,7 +220,7 @@ sub do_edits
 
 sub apply_mod
 {
-    my ($modres) = @_;
+    my ($repores, $modres) = @_;
     my $modxml = $modres->xml;
 
     my $modname    = $modxml->{name};
@@ -154,9 +244,9 @@ sub apply_mod
     }
 
     eval {
-        do_copies($modres);
+        do_copies($repores, $modres);
         $_->read for @res; # TODO read only on demand
-        do_edits($modres, \@res);
+        do_edits($repores, $modres, \@res);
     };
     if ($@) {
         warn "Caught error while applying mod: $@";
@@ -172,17 +262,57 @@ sub nodos
     return wantarray ? @r : $r[0];
 }
 
+# Note that conditions, according to the de facto standard implementation, are
+# parsed left-to-right in the absence of parentheses; that is, "and" and "or"
+# operators have the same precedence
+sub compile_condition
+{
+    my ($repores, $modres, $condition) = @_;
+
+    my @textterms = grep length, map trim,
+                        extract_multiple($condition,
+                                        [ \&extract_bracketed,
+                                          \&extract_quotelike,
+                                          'not',
+                                          qr/\b(and|or)\b/,
+                                        ]);
+
+    my @terms = map {
+        /^\((.*)\)$/ ? compile_condition($repores, $modres, $1) :
+        /^'(.*)'$/   ? do { my $name = $1; sub { $repores->have(fix_mod_name($name)) } } :
+        #/^'(.*)'$/   ? do { my $name = $1; sub { warn $name; $test{$name} } } :
+        $_ # default: pass through
+    } @textterms;
+
+    # make two passes through the terms, first doing unary operators (not) and
+    # then binary operators (and, or)
+    for (my $i = 0; $i < @terms; $i++) {
+        # copy on lexical pad necessary for correct scoping
+        my $next = $terms[$i + 1];
+
+        $terms[$i] =~ /^not$/ and splice(@terms, $i, 2, sub { not $next->() });
+    }
+
+    my $final = $terms[0];
+    die "Invalid condition:\n\t$condition" unless ref($final) eq "CODE";
+    for (my $i = 0; $i < @terms; $i++) {
+            my $prev = $final;
+        my $j = $i + 1;
+        local $_ = $terms[$i]; # convenience alias
+
+        /^and$/ and (++$i, $final = sub { $prev->() && $terms[$j]->() });
+        /^or$/  and (++$i, $final = sub { $prev->() || $terms[$j]->() });
+    }
+
+    return $final;
+}
+
 sub do_edit
 {
-    my ($str, $edit) = @_;
+    my ($repores, $modres, $str, $edit) = @_;
 
     my $pos = 0;
     my $len = 0;
-
-    # XXX use condition
-    my $condition = sub {
-        die "Conditions not implemented; unsafe to continue";
-    };
 
     my $find = sub {
         my ($what, $up) = @_;
@@ -234,7 +364,6 @@ sub do_edit
     for (@{ $edit->pointer->{"/order"} }) {
         my $what = ${ $edit->{$_} }[ $ctr{$_}++ ]->pointer;
         /(find|search|seek)(up)?/ and $find->($what, defined $2);
-        /condition/               and $condition->($what);
         /insert|add/              and $insert->($what);
         /delete/                  and $delete->($what);
         /replace/                 and $replace->($what);
