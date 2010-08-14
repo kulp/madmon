@@ -4,8 +4,6 @@ use strict;
 package HoNModManGtkGUI;
 use base qw( Gtk2::GladeXML::Simple );
 
-use feature "say";
-
 use XXX;
 
 use Config::General qw(ParseConfig SaveConfig);
@@ -86,13 +84,17 @@ sub new
     $self->{_config} = \%conf;
 
     $self->get_widget('applymodsbutton')->set_sensitive(+$self->{_config}{gamedir});
+    # TODO clean this up
+    $$_ = ref($$_) ? $$_ : [ $$_ ] for map { \$self->{_config}{$_."modfile"} } qw(enabled disabled);
+    $self->add_mod_file_names($self->{_config}{enabledmodfile }, 1);
+    $self->add_mod_file_names($self->{_config}{disabledmodfile}, 0);
 
     return $self;
 }
 
 sub add_mod_file_names
 {
-    my ($self, $files) = @_;
+    my ($self, $files, $enabled) = @_;
 
     my $sl = $self->get_widget('modtreeview');
 
@@ -112,8 +114,9 @@ sub add_mod_file_names
                 $pb = Gtk2::Gdk::Pixbuf->new_from_file($iconfilename);
             }
 
-            #push @{ $self->{_config}{modfiles} }, $filename;
-            push @{ $sl->{data} }, [ 1, $pb, $mod->name, $mod->version, $mod->description, $filename ];
+            # TODO remove dupes
+            push @{ $sl->{data} },
+                [ $enabled, $pb, $mod->name, $mod->version, $mod->description, $filename ];
         };
         if ($@) {
             push @bads, $filename;
@@ -144,7 +147,7 @@ sub addmodbutton_clicked_cb
 
     if ($fc->run eq "ok") {
         my @filenames = $fc->get_filenames;
-        $self->add_mod_file_names(\@filenames);
+        $self->add_mod_file_names(\@filenames, 1);
     }
 
     $fc->destroy;
@@ -157,9 +160,13 @@ sub delmodbutton_clicked_cb
     # TODO redo this, there must be a better way
     # tried setting $sl->{data} wholesale but I get a segfault
     # at least this way ensures my indices are up-to-date
-    while (my @indices = $sl->get_selection->get_selected_rows->get_indices) {
-        splice(@{ $sl->{data} }, $indices[0], 1, ());
-    }
+    eval {
+        while (my @indices = $sl->get_selection->get_selected_rows->get_indices) {
+            splice(@{ $sl->{data} }, $indices[0], 1, ());
+        }
+    };
+
+    1;
 }
 
 sub menuitemSelectGameDir_activate_cb
@@ -216,9 +223,15 @@ sub applymodsbutton_clicked_cb
 
     my $repores = create_repo($self->{_config}{gamedir} . "/game");
 
+    # TODO stop referring to fields by hardcoded column indices
     my @modres = map { HoN::Honmod->new(filename => $_->[5]) }
         grep { $_->[0] } # only enableds
         @{ $sl->{data} };
+
+    # TODO differentiate between "enabled" and "successfully applied"
+    # TODO use part() from List::MoreUtils
+    @{ $self->{_config}{enabledmodfile } } = map { $_->[5] } grep {  $_->[0] } @{ $sl->{data} };
+    @{ $self->{_config}{disabledmodfile} } = map { $_->[5] } grep { !$_->[0] } @{ $sl->{data} };
 
     if (not @modres) {
         $self->_message(info => "No modules enabled!");
@@ -229,10 +242,26 @@ sub applymodsbutton_clicked_cb
 
     my $ordered = calc_deps(\@modres);
 
+    my $dp = $self->get_widget('dialogProgress');
+    my $p = $self->get_widget('progressbar');
+    $p->set_fraction(0);
+    $dp->show;
+
     eval {
-        for my $modres (@$ordered) {
-            say "Applying mod " . $modres->{filename} . " ...";
+        my $l = $self->get_widget('progresslabel');
+
+        my $canceled;
+        $self->get_widget('buttonCancel')->signal_connect(clicked => sub { $canceled = 1 });
+
+        for my $i (0 .. $#$ordered) {
+            die "Canceled by user" if $canceled;
+
+            my $modres = $ordered->[$i];
+            $l->set_text("Applying '" . $modres->xml->{name} . "' ...");
             apply_mod($repores, $modres);
+            # TODO make us more reponsive; this is a hack for single-threading
+            Gtk2->main_iteration while Gtk2->events_pending;
+            $p->set_fraction(($i + 1) / @$ordered);
         }
     };
     if ($@) {
@@ -242,6 +271,8 @@ sub applymodsbutton_clicked_cb
         $repores->save
             or _message(error => "Failed to save mods repo");
     }
+
+    $dp->hide;
 }
 
 sub ignore_delete { return TRUE;    } 
