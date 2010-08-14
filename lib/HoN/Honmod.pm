@@ -8,11 +8,7 @@ use XML::Smart;
 
 use HoN::S2Z;
 
-sub new
-{
-    my $class = shift;
-    return bless { @_ } => $class;
-}
+use base qw(HoN::S2Z);
 
 sub read
 {
@@ -33,6 +29,16 @@ sub xml
 {
     my $self = shift;
     return $self->{xml} ||= $self->read(@_);
+}
+
+sub version
+{
+    return shift->xml->{mmversion};
+}
+
+sub name
+{
+    return shift->xml->{name};
 }
 
 1;

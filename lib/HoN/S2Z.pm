@@ -6,15 +6,6 @@ use 5.10.0;
 use Archive::Zip qw(:ERROR_CODES :CONSTANTS);
 use XML::Smart;
 
-# TODO use my own naming / versioning ?
-my $default_comment = <<EOM;
-HoN Mod Manager v1.3.6.0 Output
-
-Game Version: 1.0.6.1
-
-Applied Mods: 
-EOM
-
 sub new
 {
     my $class = shift;
@@ -29,7 +20,6 @@ sub read
     my $zip = $self->{zip} = Archive::Zip->new;
 
     if (!-e $self->{filename} and $self->{create}) {
-        $zip->zipfileComment($default_comment);
         $zip->overwriteAs($self->{filename});
     }
 
@@ -59,6 +49,15 @@ sub save
 }
 
 package HoN::S2Z::Honmod;
+
+# TODO use my own naming / versioning ?
+my $default_comment = <<EOM;
+HoN Mod Manager v1.3.6.0 Output
+
+Game Version: 1.0.6.1
+
+Applied Mods: 
+EOM
 
 use base qw(HoN::S2Z);
 
