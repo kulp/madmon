@@ -38,6 +38,8 @@ sub new
                     Filename    hidden
                     ));
 
+    $sl->get_selection->set_mode('multiple');
+
     my $renderer = Gtk2::CellRendererText->new;
     $renderer->set(ellipsize => "end");
     my $dcol = Gtk2::TreeViewColumn->new_with_attributes("Description", $renderer, text => 4);
@@ -136,8 +138,9 @@ sub addmodbutton_clicked_cb
         );
 
     $fc->set_select_multiple(TRUE);
-    # TODO add shortcut to mods download folder ?
-    #$fc->add_shortcut_folder('/tmp');
+    if (my $dl = $self->{_config}{downloaddir}) {
+        $fc->add_shortcut_folder($dl);
+    }
 
     if ($fc->run eq "ok") {
         my @filenames = $fc->get_filenames;
@@ -145,6 +148,18 @@ sub addmodbutton_clicked_cb
     }
 
     $fc->destroy;
+}
+
+sub delmodbutton_clicked_cb
+{
+    my ($self, $widget) = @_;
+    my $sl = $self->get_widget('modtreeview');
+    # TODO redo this, there must be a better way
+    # tried setting $sl->{data} wholesale but I get a segfault
+    # at least this way ensures my indices are up-to-date
+    while (my @indices = $sl->get_selection->get_selected_rows->get_indices) {
+        splice(@{ $sl->{data} }, $indices[0], 1, ());
+    }
 }
 
 sub menuitemSelectGameDir_activate_cb
@@ -195,6 +210,7 @@ sub applymodsbutton_clicked_cb
 {
     my ($self, $widget) = @_;
 
+    # TODO progress bar
     warn "applying mods";
     my $sl = $self->get_widget('modtreeview');
 
@@ -222,6 +238,7 @@ sub applymodsbutton_clicked_cb
     if ($@) {
         $self->_message(error => "Error while applying mods: $@");
     } else {
+        $self->_message(info => "Successfully applied mods");
         $repores->save
             or _message(error => "Failed to save mods repo");
     }
