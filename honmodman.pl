@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 use strict;
-#use 5.10.0;
+use 5.10.0;
 use feature qw(say);
 
 use XXX;
@@ -12,60 +12,99 @@ use HoN::Honmod;
 use HoN::S2Z;
 use List::Util qw(first);
 use Text::Trim qw(trim);
+use Text::Balanced qw(extract_bracketed extract_quotelike);
 
-my $gamedir = "."; # XXX
-my $resfilename = "resources999.s2z";
-my $resfilepath = "$gamedir/$resfilename";
-my ($applydir) = @ARGV;
-unlink $resfilepath;
-my $repores = HoN::S2Z::Honmod->new(create => 1, filename => $resfilepath);
-$repores->read;
-$repores->parse;
-
-my @mods = glob "$applydir/*.honmod";
-
-my @modres = map { HoN::Honmod->new(filename => $_) } @mods;
-$_->read for @modres;
+our $gamedir = "."; # XXX
+our $resfilename = "resources999.s2z";
+our $resfilepath = "$gamedir/$resfilename";
 
 my %orignames;
 my %normnames;
 
-my %deps;
-for my $m (@modres) {
-    my $xml = $m->xml;
-    my @reqs =
-        map { $_->{name} = fix_mod_name($_->{name}); $_ }
-        grep { %$_ }
-        map { $_->pointer }
-        @{ $xml->{requirement} };
-    my $origname = $xml->{name}->pointer;
-    my $name = fix_mod_name($origname);
-    $orignames{$name} = $origname;
-    $normnames{$origname} = $name;
-    $deps{ $name } = {
-        name => $name,
-        # TODO version
-        reqs => \@reqs,
-        mod  => $m,
-    };
+climain(@ARGV) unless caller;
+
+################################################################################
+
+sub climain
+{
+	my ($applydir) = @_;
+	my $repores = create_repo($resfilepath);
+
+	my @mods = glob "$applydir/*.honmod";
+
+	my @modres = map { HoN::Honmod->new(filename => $_) } @mods;
+	$_->read for @modres;
+
+	my $ordered = calc_deps(\@modres);
+
+	for my $modres (@$ordered) {
+		say "Applying mod " . $modres->{filename} . " ...";
+		apply_mod($repores, $modres);
+	}
+
+	$repores->save
+		or die "Failed to write repo";
 }
 
-my %deptree = map {
-    $_->{name} => [ map { $_->{name} } @{ $_->{reqs} } ]
-} sort { +@{ $a->{reqs} } - +@{ $b->{reqs} } } values %deps;
+sub create_repo
+{
+	my ($resfilepath) = @_;
 
-my $depsrc = Algorithm::Dependency::Source::HoA->new(\%deptree);
-my $depmkr = Algorithm::Dependency::Ordered->new(source => $depsrc, ignore_orphans => 1) # TODO ignore_orphans
-    or die "Failed to create dependency tree resolver";
+	unlink $resfilepath;
+	my $repores = HoN::S2Z::Honmod->new(create => 1, filename => $resfilepath);
+	$repores->read;
+	$repores->parse;
 
-my $sched = $depmkr->schedule_all
-    or die "Failed to find a schedule to enable all mods";
-print "Going to apply mods:\n", map { "\t$orignames{$_}\n" } @$sched;
-my @ordered = map { $deps{$_}->{mod} } @$sched;
+	return $repores;
+}
 
-for my $modres (@ordered) {
-    say "Applying mod " . $modres->{filename} . " ...";
-    apply_mod($modres);
+sub calc_deps
+{
+	my ($modres) = @_;
+	my %deps;
+	for my $m (@$modres) {
+		my $xml = $m->xml;
+
+		sub cleanup {
+			map { $_->{name} = fix_mod_name($_->{name}); $_ }
+			grep { %$_ }
+			map { $_->pointer } @_
+		}
+
+		my @reqs    = cleanup @{ $xml->{requirement} };
+		my @afters  = cleanup @{ $xml->{applyafter} };
+		my @befores = cleanup @{ $xml->{applybefore} };
+		# TODO support applybefore
+
+		my $origname = $xml->{name}->pointer;
+		warn "<applybefore/> not yet supported, skipping '$origname'" and next if @befores;
+
+		my $name = fix_mod_name($origname);
+		$orignames{$name} = $origname;
+		$normnames{$origname} = $name;
+		$deps{ $name } = {
+			# TODO version
+			name    => $name,
+			reqs    => \@reqs,
+			afters  => \@afters,
+			befores => \@befores,
+			mod     => $m,
+		};
+	}
+
+	my %deptree = map {
+		$_->{name} => [ map { $_->{name} } @{ $_->{reqs} }, @{ $_->{afters} } ]
+	} sort { +@{ $a->{reqs} } - +@{ $b->{reqs} } } values %deps;
+
+	my $depsrc = Algorithm::Dependency::Source::HoA->new(\%deptree);
+	my $depmkr = Algorithm::Dependency::Ordered->new(source => $depsrc, ignore_orphans => 1)
+		or die "Failed to create dependency tree resolver";
+
+	my $sched = $depmkr->schedule_all
+		or die "Failed to find a schedule to enable all mods";
+	print "Going to apply mods:\n", map { "\t$orignames{$_}\n" } @$sched;
+	my @ordered = map { $deps{$_}->{mod} } @$sched;
+	return \@ordered;
 }
 
 # this is from the original HoN Modification Manager
@@ -79,7 +118,7 @@ sub fix_mod_name
 
 sub do_copies
 {
-    my ($modres) = @_;
+    my ($repores, $modres) = @_;
     my $modxml = $modres->xml;
 
     for my $copy (grep { %$_ } @{ $modxml->{copyfile} }) {
@@ -97,7 +136,7 @@ sub do_copies
 
 sub do_edits
 {
-    my ($modres, $res) = @_;
+    my ($repores, $modres, $res) = @_;
     my $modxml = $modres->xml;
 
     EDIT:
@@ -112,7 +151,7 @@ sub do_edits
 
                 my $str = $file->contents;
 
-                do_edit(\$str, $edits);
+                do_edit($repores, $modres, \$str, $edits);
 
                 my $member = Archive::Zip::Member->newFromString($str, $filename);
 
@@ -130,7 +169,7 @@ sub do_edits
 
 sub apply_mod
 {
-    my ($modres) = @_;
+    my ($repores, $modres) = @_;
     my $modxml = $modres->xml;
 
     my $modname    = $modxml->{name};
@@ -154,9 +193,9 @@ sub apply_mod
     }
 
     eval {
-        do_copies($modres);
+        do_copies($repores, $modres);
         $_->read for @res; # TODO read only on demand
-        do_edits($modres, \@res);
+        do_edits($repores, $modres, \@res);
     };
     if ($@) {
         warn "Caught error while applying mod: $@";
@@ -172,15 +211,25 @@ sub nodos
     return wantarray ? @r : $r[0];
 }
 
+sub compile_condition
+{
+	my ($repores, $modres, $condition) = @_;
+	my ($middle, $after, $before) = extract_delimited($condition, "()");
+
+    die $condition;
+}
+
 sub do_edit
 {
-    my ($str, $edit) = @_;
+    my ($repores, $modres, $str, $edit) = @_;
 
     my $pos = 0;
     my $len = 0;
 
     # XXX use condition
     my $condition = sub {
+        my ($what) = @_;
+        my $sub = compile_condition($repores, $modres, $what);
         die "Conditions not implemented; unsafe to continue";
     };
 
@@ -240,7 +289,4 @@ sub do_edit
         /replace/                 and $replace->($what);
     }
 }
-
-$repores->save
-    or die "Failed to write repo";
 

@@ -65,6 +65,14 @@ use base qw(HoN::S2Z);
 use XXX;
 use List::MoreUtils qw(firstidx);
 
+sub read
+{
+    my ($self) = @_;
+    my $result = $self->SUPER::read;
+    $self->{zip}->zipfileComment($default_comment);
+    return $result;
+}
+
 sub parse
 {
     my $self = shift;
