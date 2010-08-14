@@ -4,19 +4,21 @@ use strict;
 package HoNModManGtkGUI;
 use base qw( Gtk2::GladeXML::Simple );
 
-#use XXX;
+use feature "say";
 
+use XXX;
+
+use Config::General qw(ParseConfig SaveConfig);
 use File::Temp qw(tempfile);
-#use File::Basename qw(basename);
 use Glib qw/TRUE FALSE/;
-use Gtk2 '-init';
-#use Gtk2::Pango;
-use Gtk2::SimpleList;
 use Gtk2::Ex::Simple::List;
+use Gtk2 '-init';
+use Gtk2::SimpleList;
 use String::Truncate qw(elide);
 
 use lib "../../lib"; #XXX
 use HoN::Honmod;
+use HoN::Madmon qw(:all);
 
 my $gladefile = "kui.glade";
 
@@ -33,6 +35,7 @@ sub new
                     Name        text
                     Version     text
                     Description text
+                    Filename    hidden
                     ));
 
     my $renderer = Gtk2::CellRendererText->new;
@@ -55,6 +58,32 @@ sub new
     #$amb->set_use_underline(0);
     #$amb->set_label("gtk-add");
     #$amb->set_use_stock(1);
+
+    my $confdir = scalar glob "~/.madmon";
+    my $conffile = "madmonrc";
+    my $confpath = "$confdir/$conffile";
+    if (!-d $confdir) {
+        mkdir $confdir
+            or die "Could not create madmon conf directory '$confdir'";
+    }
+    if (!-f $confpath) {
+        open my $fh, ">", $confpath;
+    }
+
+    my $cg = $self->{_cg} = Config::General->new(
+        -ConfigFile => $conffile,
+        -ConfigPath => $confdir,
+        -DefaultConfig => {
+            #gamedir     => (scalar glob '~/HoN'),
+            appliedmods => [],
+        },
+    );
+
+    my %conf = $cg->getall;
+
+    $self->{_config} = \%conf;
+
+    $self->get_widget('applymodsbutton')->set_sensitive(+$self->{_config}{gamedir});
 
     return $self;
 }
@@ -81,7 +110,8 @@ sub add_mod_file_names
                 $pb = Gtk2::Gdk::Pixbuf->new_from_file($iconfilename);
             }
 
-            push @{ $sl->{data} }, [ 0, $pb, $mod->name, $mod->version, $mod->description ];
+            #push @{ $self->{_config}{modfiles} }, $filename;
+            push @{ $sl->{data} }, [ 1, $pb, $mod->name, $mod->version, $mod->description, $filename ];
         };
         if ($@) {
             push @bads, $filename;
@@ -89,11 +119,7 @@ sub add_mod_file_names
     }
 
     if (@bads) {
-        my $message = Gtk2::MessageDialog->new(
-                $sl->get_toplevel, [], 'warning', 'ok',
-                "Failed to load the following modules:\n" . join "\n", @bads);
-        $message->run;
-        $message->destroy;
+        $self->_message(warning => "Failed to load the following modules:\n" . join "\n", @bads);
     }
 }
 
@@ -133,21 +159,20 @@ sub menuitemSelectGameDir_activate_cb
             'gtk-ok'     => 'ok'
         );
 
-    $dc->set_current_folder($self->{gamedir}) if $self->{gamedir};
+    $dc->set_current_folder($self->{_config}{gamedir}) if $self->{_config}{gamedir};
 
     while ($dc->run eq "ok") {
         my $dir = $dc->get_filename;
         if (-d $dir and -d "$dir/game") {
-            $self->{gamedir} = $dir;
+            $self->{_config}{gamedir} = $dir;
             last;
         } else {
-            my $message = Gtk2::MessageDialog->new(
-                    $widget->get_toplevel, [], 'warning', 'ok',
-                    "The selected directory is not a valid HoN directory");
-            $message->run;
-            $message->destroy;
+            $self->_message(warning => "The selected directory is not a valid HoN directory");
+            delete $self->{_config}{gamedir};
         }
     }
+
+    $self->get_widget('applymodsbutton')->set_sensitive(+$self->{_config}{gamedir});
 
     $dc->destroy;
 }
@@ -158,9 +183,60 @@ sub show_about_box
     $self->get_widget('aboutdialog')->show;
 }
 
+sub _message
+{
+    my ($self, $type, $text) = @_;
+    my $message = Gtk2::MessageDialog->new($self->get_widget('mainwindow'), [], $type, 'ok', $text);
+    $message->run;
+    $message->destroy;
+}
+
+sub applymodsbutton_clicked_cb
+{
+    my ($self, $widget) = @_;
+
+    warn "applying mods";
+    my $sl = $self->get_widget('modtreeview');
+
+    my $repores = create_repo($self->{_config}{gamedir} . "/game");
+
+    my @modres = map { HoN::Honmod->new(filename => $_->[5]) }
+        grep { $_->[0] } # only enableds
+        @{ $sl->{data} };
+
+    if (not @modres) {
+        $self->_message(info => "No modules enabled!");
+        return;
+    }
+
+    $_->read for @modres;
+
+    my $ordered = calc_deps(\@modres);
+
+    eval {
+        for my $modres (@$ordered) {
+            say "Applying mod " . $modres->{filename} . " ...";
+            apply_mod($repores, $modres);
+        }
+    };
+    if ($@) {
+        $self->_message(error => "Error while applying mods: $@");
+    } else {
+        $repores->save
+            or _message(error => "Failed to save mods repo");
+    }
+}
+
 sub ignore_delete { return TRUE;    } 
-sub gtk_main_quit { Gtk2->main_quit } 
 sub hide_about    { $_[1]->hide;    } 
+
+sub main_quit {
+    my ($self, $widget) = @_;
+
+    $self->{_cg}->save_file(($self->{_cg}->files)[0], $self->{_config});
+
+    Gtk2->main_quit;
+} 
 
 1;
 
