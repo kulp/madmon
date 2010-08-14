@@ -1,4 +1,4 @@
-Dependency-tree building and walking
 Automatic updates from web
 Order of application
 Support <applybefore/>
+Better GUI responsiveness (may need threading)

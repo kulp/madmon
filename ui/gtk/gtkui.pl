@@ -19,6 +19,9 @@ use HoN::Honmod;
 use HoN::Madmon qw(:all);
 
 my $gladefile = "kui.glade";
+my $confdir = scalar glob "~/.madmon";
+my $conffile = "madmonrc";
+my $confpath = "$confdir/$conffile";
 
 sub new
 {
@@ -54,14 +57,7 @@ sub new
     $_->set_resizable(1) for map { $sl->get_column($_) } 1 .. 4;
 
     # TODO fix accelerator collision between Apply and Add
-    #my $amb = $self->get_widget('addmodbutton');
-    #$amb->set_use_underline(0);
-    #$amb->set_label("gtk-add");
-    #$amb->set_use_stock(1);
 
-    my $confdir = scalar glob "~/.madmon";
-    my $conffile = "madmonrc";
-    my $confpath = "$confdir/$conffile";
     if (!-d $confdir) {
         mkdir $confdir
             or die "Could not create madmon conf directory '$confdir'";
@@ -74,8 +70,8 @@ sub new
         -ConfigFile => $conffile,
         -ConfigPath => $confdir,
         -DefaultConfig => {
-            #gamedir     => (scalar glob '~/HoN'),
-            appliedmods => [],
+            enabledmodfile  => [],
+            disabledmodfile => [],
         },
     );
 
@@ -161,10 +157,12 @@ sub delmodbutton_clicked_cb
     # tried setting $sl->{data} wholesale but I get a segfault
     # at least this way ensures my indices are up-to-date
     eval {
-        while (my @indices = $sl->get_selection->get_selected_rows->get_indices) {
+        while (my @indices = $sl->get_selected_indices) {
             splice(@{ $sl->{data} }, $indices[0], 1, ());
         }
     };
+
+    $self->update_saved_mods($sl);
 
     1;
 }
@@ -213,12 +211,18 @@ sub _message
     $message->destroy;
 }
 
+sub update_saved_mods
+{
+    my ($self, $sl) = @_;
+    # TODO differentiate between "enabled" and "successfully applied"
+    @{ $self->{_config}{enabledmodfile } } = map { $_->[5] } grep {  $_->[0] } @{ $sl->{data} };
+    @{ $self->{_config}{disabledmodfile} } = map { $_->[5] } grep { !$_->[0] } @{ $sl->{data} };
+}
+
 sub applymodsbutton_clicked_cb
 {
     my ($self, $widget) = @_;
 
-    # TODO progress bar
-    warn "applying mods";
     my $sl = $self->get_widget('modtreeview');
 
     my $repores = create_repo($self->{_config}{gamedir} . "/game");
@@ -227,11 +231,6 @@ sub applymodsbutton_clicked_cb
     my @modres = map { HoN::Honmod->new(filename => $_->[5]) }
         grep { $_->[0] } # only enableds
         @{ $sl->{data} };
-
-    # TODO differentiate between "enabled" and "successfully applied"
-    # TODO use part() from List::MoreUtils
-    @{ $self->{_config}{enabledmodfile } } = map { $_->[5] } grep {  $_->[0] } @{ $sl->{data} };
-    @{ $self->{_config}{disabledmodfile} } = map { $_->[5] } grep { !$_->[0] } @{ $sl->{data} };
 
     if (not @modres) {
         $self->_message(info => "No modules enabled!");
@@ -270,9 +269,30 @@ sub applymodsbutton_clicked_cb
         $self->_message(info => "Successfully applied mods");
         $repores->save
             or _message(error => "Failed to save mods repo");
+        $self->update_saved_mods($sl);
     }
 
     $dp->hide;
+}
+
+sub buttonEnableAll_clicked_cb
+{
+    my ($self, $widget) = @_;
+    $_->[0] = 1 for @{ $self->get_widget('modtreeview')->{data} };
+}
+
+sub buttonToggleSelected_clicked_cb
+{
+    my ($self, $widget) = @_;
+    my $sl = $self->get_widget('modtreeview');
+    my @sel = $sl->get_selected_indices;
+    $_->[0] = !$_->[0] for @{ $sl->{data} }[ @sel ];
+}
+
+sub buttonDisableAll_clicked_cb
+{
+    my ($self, $widget) = @_;
+    $_->[0] = 0 for @{ $self->get_widget('modtreeview')->{data} };
 }
 
 sub ignore_delete { return TRUE;    } 

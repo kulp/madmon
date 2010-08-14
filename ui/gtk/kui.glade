@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <!DOCTYPE glade-interface SYSTEM "glade-2.0.dtd">
-<!--Generated with glade3 3.4.5 on Sat Aug 14 16:01:40 2010 -->
+<!--Generated with glade3 3.4.5 on Sat Aug 14 17:46:34 2010 -->
 <glade-interface>
   <widget class="GtkWindow" id="mainwindow">
     <property name="width_request">750</property>
@@ -26,7 +26,6 @@
                     <property name="visible">True</property>
                     <child>
                       <widget class="GtkImageMenuItem" id="imagemenuitemNew">
-                        <property name="visible">True</property>
                         <property name="label" translatable="yes">gtk-new</property>
                         <property name="use_underline">True</property>
                         <property name="use_stock">True</property>
@@ -42,7 +41,6 @@
                     </child>
                     <child>
                       <widget class="GtkImageMenuItem" id="imagemenuitemOpen">
-                        <property name="visible">True</property>
                         <property name="label" translatable="yes">gtk-open</property>
                         <property name="use_underline">True</property>
                         <property name="use_stock">True</property>
@@ -50,7 +48,6 @@
                     </child>
                     <child>
                       <widget class="GtkImageMenuItem" id="imagemenuitemSave">
-                        <property name="visible">True</property>
                         <property name="label" translatable="yes">gtk-save</property>
                         <property name="use_underline">True</property>
                         <property name="use_stock">True</property>
@@ -58,7 +55,6 @@
                     </child>
                     <child>
                       <widget class="GtkImageMenuItem" id="imagemenuitemSaveAs">
-                        <property name="visible">True</property>
                         <property name="label" translatable="yes">gtk-save-as</property>
                         <property name="use_underline">True</property>
                         <property name="use_stock">True</property>
@@ -84,7 +80,6 @@
             </child>
             <child>
               <widget class="GtkMenuItem" id="menuitemEdit">
-                <property name="visible">True</property>
                 <property name="label" translatable="yes">_Edit</property>
                 <property name="use_underline">True</property>
                 <child>
@@ -141,19 +136,81 @@
           <widget class="GtkVBox" id="vbox2">
             <property name="visible">True</property>
             <child>
-              <widget class="GtkScrolledWindow" id="scrolledwindow1">
+              <widget class="GtkVBox" id="vbox4">
                 <property name="visible">True</property>
-                <property name="can_focus">True</property>
-                <property name="hscrollbar_policy">GTK_POLICY_AUTOMATIC</property>
-                <property name="vscrollbar_policy">GTK_POLICY_AUTOMATIC</property>
                 <child>
-                  <widget class="GtkTreeView" id="modtreeview">
+                  <widget class="GtkScrolledWindow" id="scrolledwindow1">
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
-                    <property name="rules_hint">True</property>
-                    <property name="enable_search">False</property>
-                    <property name="rubber_banding">True</property>
+                    <property name="hscrollbar_policy">GTK_POLICY_AUTOMATIC</property>
+                    <property name="vscrollbar_policy">GTK_POLICY_AUTOMATIC</property>
+                    <child>
+                      <widget class="GtkTreeView" id="modtreeview">
+                        <property name="visible">True</property>
+                        <property name="can_focus">True</property>
+                        <property name="rules_hint">True</property>
+                        <property name="enable_search">False</property>
+                        <property name="rubber_banding">True</property>
+                      </widget>
+                    </child>
                   </widget>
+                </child>
+                <child>
+                  <widget class="GtkHBox" id="hbox2">
+                    <property name="height_request">48</property>
+                    <property name="visible">True</property>
+                    <property name="homogeneous">True</property>
+                    <child>
+                      <widget class="GtkButton" id="buttonEnableAll">
+                        <property name="visible">True</property>
+                        <property name="can_focus">True</property>
+                        <property name="receives_default">True</property>
+                        <property name="label" translatable="yes">_Enable All</property>
+                        <property name="use_underline">True</property>
+                        <property name="response_id">0</property>
+                        <signal name="clicked" handler="buttonEnableAll_clicked_cb"/>
+                      </widget>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="padding">5</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <widget class="GtkButton" id="buttonDisableAll">
+                        <property name="visible">True</property>
+                        <property name="can_focus">True</property>
+                        <property name="receives_default">True</property>
+                        <property name="label" translatable="yes">_Disable All</property>
+                        <property name="use_underline">True</property>
+                        <property name="response_id">0</property>
+                        <signal name="clicked" handler="buttonDisableAll_clicked_cb"/>
+                      </widget>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="padding">5</property>
+                        <property name="position">1</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <widget class="GtkButton" id="buttonToggleSelected">
+                        <property name="visible">True</property>
+                        <property name="can_focus">True</property>
+                        <property name="receives_default">True</property>
+                        <property name="label" translatable="yes">_Toggle Selected</property>
+                        <property name="use_underline">True</property>
+                        <property name="response_id">0</property>
+                        <signal name="clicked" handler="buttonToggleSelected_clicked_cb"/>
+                      </widget>
+                      <packing>
+                        <property name="padding">5</property>
+                        <property name="position">2</property>
+                      </packing>
+                    </child>
+                  </widget>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="position">1</property>
+                  </packing>
                 </child>
               </widget>
             </child>
