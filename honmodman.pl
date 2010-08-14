@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 use strict;
-use 5.10.0;
+#use 5.10.0;
 use feature qw(say);
 
 use XXX;
@@ -12,99 +12,126 @@ use HoN::Honmod;
 use HoN::S2Z;
 use List::Util qw(first);
 use Text::Trim qw(trim);
-use Text::Balanced qw(extract_bracketed extract_quotelike);
+use Text::Balanced qw(extract_multiple
+                      extract_bracketed
+                      extract_quotelike);
 
-our $gamedir = "."; # XXX
-our $resfilename = "resources999.s2z";
-our $resfilepath = "$gamedir/$resfilename";
+my $gamedir = "."; # XXX
+my $resfilename = "resources999.s2z";
+my $resfilepath = "$gamedir/$resfilename";
+my ($applydir) = @ARGV;
+unlink $resfilepath;
+my $repores = HoN::S2Z::Honmod->new(create => 1, filename => $resfilepath);
+$repores->read;
+$repores->parse;
 
 my %orignames;
 my %normnames;
 
+our %test = qw(
+    a   1
+    b   0
+    c   0
+    d   1
+    e   3
+);
+
+my @tests = (
+    [ qq('a' and not 'b' and not ('c' or not 'd')), 1 ],
+    [ qq('a' and not 'b'), 1 ],
+    [ qq('a' and 'b'), 0 ],
+);
+
+#for (@tests) {
+#    my $cond = compile_condition(undef, undef, $_->[0]);
+#    die "Failed test" unless int($cond->()) eq int($_->[1]);
+#}
+## XXX
+#die;
 climain(@ARGV) unless caller;
 
 ################################################################################
 
 sub climain
 {
-	my ($applydir) = @_;
-	my $repores = create_repo($resfilepath);
+    my ($applydir) = @_;
+    my $repores = create_repo($resfilepath);
 
-	my @mods = glob "$applydir/*.honmod";
+    my @mods = glob "$applydir/*.honmod";
 
-	my @modres = map { HoN::Honmod->new(filename => $_) } @mods;
-	$_->read for @modres;
+    my @modres = map { HoN::Honmod->new(filename => $_) } @mods;
+    $_->read for @modres;
 
-	my $ordered = calc_deps(\@modres);
+    my $ordered = calc_deps(\@modres);
 
-	for my $modres (@$ordered) {
-		say "Applying mod " . $modres->{filename} . " ...";
-		apply_mod($repores, $modres);
-	}
+    for my $modres (@$ordered) {
+        say "Applying mod " . $modres->{filename} . " ...";
+        apply_mod($repores, $modres);
+    }
 
-	$repores->save
-		or die "Failed to write repo";
+    $repores->save
+        or die "Failed to write repo";
 }
 
 sub create_repo
 {
-	my ($resfilepath) = @_;
+    my ($resfilepath) = @_;
 
-	unlink $resfilepath;
-	my $repores = HoN::S2Z::Honmod->new(create => 1, filename => $resfilepath);
-	$repores->read;
-	$repores->parse;
+    unlink $resfilepath;
+    my $repores = HoN::S2Z::Honmod->new(create => 1, filename => $resfilepath);
+    $repores->read;
+    $repores->parse;
 
-	return $repores;
+    return $repores;
 }
 
 sub calc_deps
 {
-	my ($modres) = @_;
-	my %deps;
-	for my $m (@$modres) {
-		my $xml = $m->xml;
+    my ($modres) = @_;
+    my %deps;
+    for my $m (@$modres) {
+        my $xml = $m->xml;
 
-		sub cleanup {
-			map { $_->{name} = fix_mod_name($_->{name}); $_ }
-			grep { %$_ }
-			map { $_->pointer } @_
-		}
+        sub cleanup {
+            map { $_->{name} = fix_mod_name($_->{name}); $_ }
+            grep { %$_ }
+            map { $_->pointer } @_
+        }
 
-		my @reqs    = cleanup @{ $xml->{requirement} };
-		my @afters  = cleanup @{ $xml->{applyafter} };
-		my @befores = cleanup @{ $xml->{applybefore} };
-		# TODO support applybefore
+        my @reqs    = cleanup @{ $xml->{requirement} };
+        my @afters  = cleanup @{ $xml->{applyafter} };
+        my @befores = cleanup @{ $xml->{applybefore} };
+        # TODO support applybefore
 
-		my $origname = $xml->{name}->pointer;
-		warn "<applybefore/> not yet supported, skipping '$origname'" and next if @befores;
+        my $origname = $xml->{name}->pointer;
+        warn "<applybefore/> not yet supported, skipping '$origname'" and next if @befores;
 
-		my $name = fix_mod_name($origname);
-		$orignames{$name} = $origname;
-		$normnames{$origname} = $name;
-		$deps{ $name } = {
-			# TODO version
-			name    => $name,
-			reqs    => \@reqs,
-			afters  => \@afters,
-			befores => \@befores,
-			mod     => $m,
-		};
-	}
+        my $name = fix_mod_name($origname);
+        $orignames{$name} = $origname;
+        $normnames{$origname} = $name;
+        $deps{ $name } = {
+            # TODO version
+            name    => $name,
+            reqs    => \@reqs,
+            afters  => \@afters,
+            befores => \@befores,
+            mod     => $m,
+        };
+    }
 
-	my %deptree = map {
-		$_->{name} => [ map { $_->{name} } @{ $_->{reqs} }, @{ $_->{afters} } ]
-	} sort { +@{ $a->{reqs} } - +@{ $b->{reqs} } } values %deps;
+    my %deptree = map {
+        $_->{name} => [ map { $_->{name} } @{ $_->{reqs} }, @{ $_->{afters} } ]
+    } sort { +@{ $a->{reqs} } - +@{ $b->{reqs} } } values %deps;
 
-	my $depsrc = Algorithm::Dependency::Source::HoA->new(\%deptree);
-	my $depmkr = Algorithm::Dependency::Ordered->new(source => $depsrc, ignore_orphans => 1)
-		or die "Failed to create dependency tree resolver";
+    my $depsrc = Algorithm::Dependency::Source::HoA->new(\%deptree);
+    my $depmkr = Algorithm::Dependency::Ordered->new(source => $depsrc, ignore_orphans => 1)
+        or die "Failed to create dependency tree resolver";
 
-	my $sched = $depmkr->schedule_all
-		or die "Failed to find a schedule to enable all mods";
-	print "Going to apply mods:\n", map { "\t$orignames{$_}\n" } @$sched;
-	my @ordered = map { $deps{$_}->{mod} } @$sched;
-	return \@ordered;
+    my $sched = $depmkr->schedule_all
+        or die "Failed to find a schedule to enable all mods";
+    print "Going to apply mods:\n", map { "\t$orignames{$_}\n" } @$sched;
+    my @ordered = map { $deps{$_}->{mod} } @$sched;
+    return \@ordered;
 }
 
 # this is from the original HoN Modification Manager
@@ -211,12 +238,49 @@ sub nodos
     return wantarray ? @r : $r[0];
 }
 
+# Note that conditions, according to the de facto standard implementation, are
+# parsed left-to-right in the absence of parentheses; that is, "and" and "or"
+# operators have the same precedence
 sub compile_condition
 {
-	my ($repores, $modres, $condition) = @_;
-	my ($middle, $after, $before) = extract_delimited($condition, "()");
+    my ($repores, $modres, $condition) = @_;
 
-    die $condition;
+    my @textterms = grep length, map trim,
+                        extract_multiple($condition,
+                                        [ \&extract_bracketed,
+                                          \&extract_quotelike,
+                                          'not',
+                                          qr/\b(and|or)\b/,
+                                        ]);
+
+    my @terms = map {
+        /^\((.*)\)$/ ? compile_condition($repores, $modres, $1) :
+        /^'(.*)'$/   ? do { my $name = $1; sub { $repores->have(fix_mod_name($name)) } } :
+        #/^'(.*)'$/   ? do { my $name = $1; sub { warn $name; $test{$name} } } :
+        $_ # default: pass through
+    } @textterms;
+
+    # make two passes through the terms, first doing unary operators (not) and
+    # then binary operators (and, or)
+    for (my $i = 0; $i < @terms; $i++) {
+        # copy on lexical pad necessary for correct scoping
+        my $next = $terms[$i + 1];
+
+        $terms[$i] =~ /^not$/ and splice(@terms, $i, 2, sub { not $next->() });
+    }
+
+    my $final = $terms[0];
+    die "Invalid condition:\n\t$condition" unless ref($final) eq "CODE";
+    for (my $i = 0; $i < @terms; $i++) {
+            my $prev = $final;
+        my $j = $i + 1;
+        local $_ = $terms[$i]; # convenience alias
+
+        /^and$/ and (++$i, $final = sub { $prev->() && $terms[$j]->() });
+        /^or$/  and (++$i, $final = sub { $prev->() || $terms[$j]->() });
+    }
+
+    return $final;
 }
 
 sub do_edit
@@ -230,7 +294,7 @@ sub do_edit
     my $condition = sub {
         my ($what) = @_;
         my $sub = compile_condition($repores, $modres, $what);
-        die "Conditions not implemented; unsafe to continue";
+        #die "Conditions not implemented; unsafe to continue";
     };
 
     my $find = sub {
@@ -289,4 +353,7 @@ sub do_edit
         /replace/                 and $replace->($what);
     }
 }
+
+$repores->save
+    or die "Failed to write repo";
 
