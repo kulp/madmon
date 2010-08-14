@@ -72,10 +72,10 @@ sub calc_deps
         warn "<applybefore/> not yet supported, skipping '$name'" and next if @befores;
 
         my $nname = fix_mod_name($name);
+        $orignames{ $_->{nname} } = $_->{name } for @reqs, @afters, @befores;
+        $normnames{ $_->{name } } = $_->{nname} for @reqs, @afters, @befores;
         $orignames{$nname} = $name;
-        $orignames{ $_->{nname} } = $_->{name},
-            $normnames{ $_->{name} } = $_->{nname} for @reqs, @afters, @befores;
-        $normnames{$name} = $name;
+        $normnames{$name } = $nname;
         $deps{ $nname } = {
             # TODO version
             name    => $name,
@@ -90,6 +90,8 @@ sub calc_deps
     my %deptree = map {
         $_->{nname} => [ map { $_->{nname} } @{ $_->{reqs} }, @{ $_->{afters} } ]
     } sort { +@{ $a->{reqs} } - +@{ $b->{reqs} } } values %deps;
+
+    WWW \%deptree;
 
     my $depsrc = Algorithm::Dependency::Source::HoA->new(\%deptree);
     my $depmkr = Algorithm::Dependency::Ordered->new(source => $depsrc, ignore_orphans => 1)
