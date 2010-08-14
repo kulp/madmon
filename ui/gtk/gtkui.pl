@@ -4,13 +4,14 @@ use strict;
 package HoNModManGtkGUI;
 use base qw( Gtk2::GladeXML::Simple );
 
-use XXX;
+#use XXX;
 
 use File::Temp qw(tempfile);
-use File::Basename qw(basename);
+#use File::Basename qw(basename);
 use Glib qw/TRUE FALSE/;
 use Gtk2 '-init';
 use Gtk2::SimpleList;
+use String::Truncate qw(elide);
 
 use lib "../../lib"; #XXX
 use HoN::Honmod;
@@ -31,20 +32,22 @@ sub add_mod_file_names
     my $tv = $self->get_widget('modtreeview');
 
     my $sl = Gtk2::SimpleList->new_from_treeview(
-                    $tv,
-                 qw(
+                    $tv, qw(
                     Enabled     bool
                     Icon        pixbuf
                     Name        text
                     Version     text
-                    Filename    text
+                    Description text
                     ));
 
+    my @bads;
     for my $filename (@$files) {
-        my $base = basename($filename);
+        next unless -f $filename;
         eval { # just skip if we have an error
             my $mod = HoN::Honmod->new(filename => $filename);
             $mod->read;
+            # TODO make elision width dependent on column width
+            my $desc = elide($mod->description, 40, { at_space => 1 });
             my $iconstr = $mod->file("icon.png");
             my $pb;
             if ($iconstr) {
@@ -55,12 +58,19 @@ sub add_mod_file_names
                 $pb = Gtk2::Gdk::Pixbuf->new_from_file($iconfilename);
             }
 
-            push @{ $sl->{data} }, [ 0, $pb, $mod->name, $mod->version, $base ];
+            push @{ $sl->{data} }, [ 0, $pb, $mod->name, $mod->version, $desc ];
         };
         if ($@) {
-            # TODO popup
-            warn "Error while processing '$filename'";
+            push @bads, $filename;
         }
+    }
+
+    if (@bads) {
+        my $message = Gtk2::MessageDialog->new(
+                $tv->get_toplevel, [], 'warning', 'ok',
+                "Failed to load the following modules:\n" . join "\n", @bads);
+        $message->run;
+        $message->destroy;
     }
 }
 
@@ -70,7 +80,7 @@ sub addmodbutton_clicked_cb
 
     my $fc = Gtk2::FileChooserDialog->new(
             'Choose mod file(s)',
-            $self->get_widget('mainwindow'),
+            $widget->get_toplevel,
             'open',
             'gtk-cancel' => 'cancel',
             'gtk-ok'     => 'ok'
@@ -82,9 +92,7 @@ sub addmodbutton_clicked_cb
 
     if ($fc->run eq "ok") {
         my @filenames = $fc->get_filenames;
-        # TODO do something
         $self->add_mod_file_names(\@filenames);
-        print "filenames: @filenames\n";
     }
 
     $fc->destroy;

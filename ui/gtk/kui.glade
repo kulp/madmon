@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <!DOCTYPE glade-interface SYSTEM "glade-2.0.dtd">
-<!--Generated with glade3 3.4.5 on Fri Aug 13 23:17:17 2010 -->
+<!--Generated with glade3 3.4.5 on Fri Aug 13 23:40:43 2010 -->
 <glade-interface>
   <widget class="GtkWindow" id="mainwindow">
     <property name="width_request">750</property>
     <property name="height_request">500</property>
     <property name="visible">True</property>
-    <property name="border_width">6</property>
+    <property name="border_width">1</property>
     <property name="title" translatable="yes">madmon</property>
-    <property name="default_height">300</property>
+    <property name="default_height">299</property>
     <signal name="destroy" handler="gtk_main_quit"/>
     <child>
       <widget class="GtkVBox" id="vbox1">
@@ -166,7 +166,7 @@
                     <signal name="clicked" handler="addmodbutton_clicked_cb"/>
                   </widget>
                   <packing>
-                    <property name="x">614</property>
+                    <property name="x">623</property>
                     <property name="y">11</property>
                   </packing>
                 </child>
@@ -182,7 +182,7 @@
                     <property name="response_id">0</property>
                   </widget>
                   <packing>
-                    <property name="x">491</property>
+                    <property name="x">500</property>
                     <property name="y">11</property>
                   </packing>
                 </child>
