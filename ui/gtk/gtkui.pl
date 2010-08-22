@@ -12,6 +12,7 @@ use Glib qw/TRUE FALSE/;
 use Gtk2::Ex::Simple::List;
 use Gtk2 '-init';
 use Gtk2::SimpleList;
+use PAR;
 use String::Truncate qw(elide);
 
 use lib "../../lib"; #XXX
@@ -26,7 +27,16 @@ my $confpath = "$confdir/$conffile";
 sub new
 {
     my $class = shift;
-    my $self = $class->SUPER::new( $gladefile );
+    my $self;
+    if (-f $gladefile) {
+        $self = $class->SUPER::new($gladefile);
+    } else {
+        # Maybe we were packed with PAR
+        my $tmp = File::Temp->new;
+        print $tmp PAR::read_file($gladefile);
+        close $tmp;
+        $self = $class->SUPER::new($tmp->filename);
+    }
 
     my $tv = $self->get_widget('modtreeview');
     my $sl = Gtk2::Ex::Simple::List->new_from_treeview(
