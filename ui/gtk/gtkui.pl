@@ -8,7 +8,8 @@ use XXX;
 
 use Config::General qw(ParseConfig SaveConfig);
 use File::Basename;
-use File::Temp qw(tempfile);
+use File::Fetch;
+use File::Temp 0.22 qw(tempfile);
 use Glib qw/TRUE FALSE/;
 use Gtk2::Ex::Simple::List;
 use Gtk2 '-init';
@@ -73,6 +74,32 @@ sub new
     $sl->get_column(1)->set('max-width' => 56);
     $sl->get_column(2)->set('min-width' => 128); # Name min width
     $_->set_resizable(1) for map { $sl->get_column($_) } 1 .. 4;
+
+    # drag-and-drop
+    {
+        my $dnd_handler = sub {
+            my ($widget, $context, $wx, $wy, $data, $info, $time) = @_;
+            my @uris = map URI->new($_), split /\r?\n/, $data->data;
+            for my $uri (@uris) {
+                my $dir = File::Temp->newdir;
+                my $where = File::Fetch->new(uri => $uri)->fetch(to => $dir->dirname)
+                    or die "Failed to fetch mod '$uri->path'";
+                $self->_repores; # make sure repo is created so we have a gamedir XXX
+                my $newloc = add_mod_file($where, move => 1)
+                    or die "Failed to add mod $where";
+                $self->add_mod_file_names([ $newloc ], 1);
+            }
+        };
+
+        $sl->drag_dest_set([qw(drop motion highlight)],
+                           [qw(copy private default move link ask)]);
+        $sl->signal_connect(drag_data_received => $dnd_handler);
+
+        my $tl = Gtk2::TargetList->new;
+        my $atom = Gtk2::Gdk::Atom->new("text/uri-list");
+        $tl->add($atom, 0, 0);
+        $sl->drag_dest_set_target_list($tl);
+    }
 
     # TODO fix accelerator collision between Apply and Add
 

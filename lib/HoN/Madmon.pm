@@ -11,6 +11,7 @@ our @EXPORT_OK = qw(
     apply_mod
     check_mod_updates
     replace_mod_file
+    add_mod_file
 );
 
 our %EXPORT_TAGS = (
@@ -24,6 +25,7 @@ use XXX;
 use Algorithm::Dependency::Ordered;
 use Algorithm::Dependency::Source::HoA;
 use File::Copy;
+use File::Basename qw(basename);
 use HoN::Honmod;
 use HoN::S2Z;
 use List::Util qw(first);
@@ -262,10 +264,18 @@ sub check_mod_updates
     $sub->($modres, $modversion, $newv) if $sub;
 }
 
+sub add_mod_file
+{
+    my ($filename, %opts) = @_;
+    my $base = basename $filename;
+    my $sub = $opts{move} ? \&move : \&copy;
+    my $dest = "$gamedir/mods/$base";
+    $sub->($filename, $dest) and return $dest;
+}
+
 sub replace_mod_file
 {
     my ($modres, $filename) = @_;
-    # TODO
     my $orig = $modres->{filename};
     warn "Updating $orig with $filename";
 
