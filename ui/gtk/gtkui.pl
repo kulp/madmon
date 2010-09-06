@@ -251,9 +251,13 @@ sub _mods_from_list
 
 sub _repores
 {
-    my ($self) = @_;
+    my ($self, %args) = @_;
 
-    return $self->{repo} ||= create_repo($self->{_config}{gamedir} . "/game");
+    if ($args{wipe}) {
+        return $self->{repo}   = create_repo($self->{_config}{gamedir} . "/game");
+    } else {
+        return $self->{repo} ||= create_repo($self->{_config}{gamedir} . "/game");
+    }
 }
 
 sub _ua
@@ -267,7 +271,7 @@ sub applymodsbutton_clicked_cb
 {
     my ($self, $widget) = @_;
 
-    my $repores = $self->_repores;
+    my $repores = $self->_repores(wipe => 1);
 
     my @modres = $self->_mods_from_list;
     if (not @modres) {
