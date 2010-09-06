@@ -31,7 +31,7 @@ sub xml
     return $self->{xml} ||= $self->read(@_);
 }
 
-sub version     { return shift->xml->{mmversion};   }
+sub version     { return shift->xml->{version};     }
 sub name        { return shift->xml->{name};        }
 sub description { return shift->xml->{description}; }
 
