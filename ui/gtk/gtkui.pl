@@ -29,6 +29,9 @@ my $confdir = scalar glob "~/.madmon";
 my $conffile = "madmonrc";
 my $confpath = "$confdir/$conffile";
 
+our $VERSION = "0.0.1";
+our $user_agent_string = __PACKAGE__ . "/$VERSION";
+
 sub new
 {
     my $class = shift;
@@ -253,6 +256,13 @@ sub _repores
     return $self->{repo} ||= create_repo($self->{_config}{gamedir} . "/game");
 }
 
+sub _ua
+{
+    my ($self) = @_;
+
+    return $self->{ua} ||= LWP::UserAgent->new(agent => $user_agent_string);
+}
+
 sub applymodsbutton_clicked_cb
 {
     my ($self, $widget) = @_;
@@ -308,15 +318,41 @@ sub imagemenuitemUpdate_activate_cb
 {
     my ($self, $widget) = @_;
 
+    my $repores = $self->_repores;
+    my @updated;
     my $up = sub {
         my ($modres, $old, $new) = @_;
-        my $name = $modres->xml->{name};
+        my $xml = $modres->xml;
+        my $name = $xml->{name};
+
+        my $updateurl = "$xml->{updatedownloadurl}"; # force stringification of XML::Smart object
+        if (!$updateurl) {
+            $self->_message(warning => "Mod $name is out-of-date (old version: " .
+                "$old; new version: $new) but there is no valid download URL for ".
+                "the new version");
+            return
+        }
         $self->_message(info => "Updating mod $name from $old to $new");
+
+        my $tfile = File::Temp->new;
+        my $rsp = $self->_ua->get($updateurl, ":content_file" => $tfile->filename);
+        if ($rsp->is_error) {
+            $self->_message(error => "Error encountered while updating mod $name: " . $rsp->decoded_content);
+        } else {
+            replace_mod_file($modres, $tfile->filename);
+            # TODO check for errors
+
+            $modres->read; # force re-read (XXX remove unnecessary reads)
+
+            push @updated, $modres;
+        }
     };
-    my $no = sub { };
 
     my @modres = $self->_mods_from_list;
-    check_mod_updates($_, $up, $no) for @modres;
+    check_mod_updates($_, $up, undef) for @modres;
+    if (@updated == 0) {
+        $self->_message(info => "All mods already up-to-date");
+    }
 }
 
 sub buttonEnableAll_clicked_cb

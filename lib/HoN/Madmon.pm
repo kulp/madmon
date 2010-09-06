@@ -10,6 +10,7 @@ our @EXPORT_OK = qw(
     calc_deps
     apply_mod
     check_mod_updates
+    replace_mod_file
 );
 
 our %EXPORT_TAGS = (
@@ -22,6 +23,7 @@ use XXX;
 
 use Algorithm::Dependency::Ordered;
 use Algorithm::Dependency::Source::HoA;
+use File::Copy;
 use HoN::Honmod;
 use HoN::S2Z;
 use List::Util qw(first);
@@ -202,7 +204,7 @@ sub apply_mod
     my $modxml = $modres->xml;
 
     my $modname    = $modxml->{name};
-    my $modversion = $modxml->{mmversion};
+    my $modversion = $modxml->{version};
 
     my @resfiles = sort {
         ($a =~ /(\d+)/)[0] <=> ($b =~ /(\d+)/)[0]
@@ -243,23 +245,34 @@ sub check_mod_updates
     my $modxml = $modres->xml;
 
     my $modname    = $modxml->{name};
-    my $modversion = $modxml->{mmversion};
+    my $modversion = $modxml->{version};
     my $checkurl   = $modxml->{updatecheckurl};
+    return unless $checkurl;
 
     my $ua = LWP::UserAgent->new(agent => $user_agent_string);
     my $rsp = $ua->get("$checkurl");
     my $newv = $rsp->decoded_content;
 
-    # If the versions don't parse but are not equal, assume we need to update;
-    # some incorrectly-formatted modules (old MiniUI 1.3, for example), have
-    # non-numeric versions (MiniUI "1.3.*")
-
-    my $newer = eval { (version->parse($newv) > version->parse($modversion)) };
-    my $sub = ($newer or ($@ and $newv ne $modversion))
+    # If the versions don't parse but are not equal, assume we need to update
+    my $newer = eval { version->parse($newv) > version->parse($modversion) };
+    my $sub = ($newer or ($@ and ($newv ne $modversion)))
                 ? $update_action
                 : $no_update_action;
 
     $sub->($modres, $modversion, $newv) if $sub;
+}
+
+sub replace_mod_file
+{
+    my ($modres, $filename) = @_;
+    # TODO
+    my $orig = $modres->{filename};
+    warn "Updating $orig with $filename";
+
+    move($orig, "$orig.bak")
+        or die "Failed to move '$orig' to '$orig.bak'";
+    move($filename, $orig)
+        or die "Failed to move '$filename' to '$orig'";
 }
 
 sub nodos
