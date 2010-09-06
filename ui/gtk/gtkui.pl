@@ -7,6 +7,7 @@ use base qw( Gtk2::GladeXML::Simple );
 use XXX;
 
 use Config::General qw(ParseConfig SaveConfig);
+use File::Basename;
 use File::Temp qw(tempfile);
 use Glib qw/TRUE FALSE/;
 use Gtk2::Ex::Simple::List;
@@ -15,11 +16,15 @@ use Gtk2::SimpleList;
 use PAR;
 use String::Truncate qw(elide);
 
-use lib "../../lib"; #XXX
+our $guidir;
+BEGIN {
+    $guidir = dirname $0;
+    push @INC, "$guidir/../../lib"; #XXX
+}
 use HoN::Honmod;
 use HoN::Madmon qw(:all);
 
-my $gladefile = "kui.glade";
+my $gladefile = "$guidir/kui.glade";
 my $confdir = scalar glob "~/.madmon";
 my $conffile = "madmonrc";
 my $confpath = "$confdir/$conffile";
@@ -33,7 +38,7 @@ sub new
     } else {
         # Maybe we were packed with PAR
         my $tmp = File::Temp->new;
-        print $tmp PAR::read_file($gladefile);
+        print $tmp PAR::read_file(basename $gladefile);
         close $tmp;
         $self = $class->SUPER::new($tmp->filename);
     }
@@ -229,19 +234,32 @@ sub update_saved_mods
     @{ $self->{_config}{disabledmodfile} } = map { $_->[5] } grep { !$_->[0] } @{ $sl->{data} };
 }
 
+sub _mods_from_list
+{
+    my ($self) = @_;
+
+    my $sl = $self->get_widget('modtreeview');
+
+    # TODO stop referring to fields by hardcoded column indices
+    return map { HoN::Honmod->new(filename => $_->[5]) }
+        grep { $_->[0] } # only enableds
+        @{ $sl->{data} };
+}
+
+sub _repores
+{
+    my ($self) = @_;
+
+    return $self->{repo} ||= create_repo($self->{_config}{gamedir} . "/game");
+}
+
 sub applymodsbutton_clicked_cb
 {
     my ($self, $widget) = @_;
 
-    my $sl = $self->get_widget('modtreeview');
+    my $repores = $self->_repores;
 
-    my $repores = create_repo($self->{_config}{gamedir} . "/game");
-
-    # TODO stop referring to fields by hardcoded column indices
-    my @modres = map { HoN::Honmod->new(filename => $_->[5]) }
-        grep { $_->[0] } # only enableds
-        @{ $sl->{data} };
-
+    my @modres = $self->_mods_from_list;
     if (not @modres) {
         $self->_message(info => "No modules enabled!");
         return;
@@ -279,10 +297,26 @@ sub applymodsbutton_clicked_cb
         $self->_message(info => "Successfully applied mods");
         $repores->save
             or _message(error => "Failed to save mods repo");
+        my $sl = $self->get_widget('modtreeview');
         $self->update_saved_mods($sl);
     }
 
     $dp->hide;
+}
+
+sub imagemenuitemUpdate_activate_cb
+{
+    my ($self, $widget) = @_;
+
+    my $up = sub {
+        my ($modres, $old, $new) = @_;
+        my $name = $modres->xml->{name};
+        $self->_message(info => "Updating mod $name from $old to $new");
+    };
+    my $no = sub { };
+
+    my @modres = $self->_mods_from_list;
+    check_mod_updates($_, $up, $no) for @modres;
 }
 
 sub buttonEnableAll_clicked_cb

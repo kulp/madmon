@@ -9,6 +9,7 @@ our @EXPORT_OK = qw(
     create_repo
     calc_deps
     apply_mod
+    check_mod_updates
 );
 
 our %EXPORT_TAGS = (
@@ -24,10 +25,17 @@ use Algorithm::Dependency::Source::HoA;
 use HoN::Honmod;
 use HoN::S2Z;
 use List::Util qw(first);
+use LWP::UserAgent;
 use Text::Trim qw(trim);
 use Text::Balanced qw(extract_multiple
                       extract_bracketed
                       extract_quotelike);
+
+use version 0.77;
+
+our $VERSION = "0.0.1";
+
+our $user_agent_string = __PACKAGE__ . "/$VERSION";
 
 # TODO OOPify
 
@@ -224,6 +232,34 @@ sub apply_mod
     }
 
     $repores->installed($normnames{$modname}, $modversion);
+}
+
+# Takes a modres and two subs.
+# Calls one of the subs (first if newer version avail, second otherwise) with
+# parameters: (modres, oldversion, newversion)
+sub check_mod_updates
+{
+    my ($modres, $update_action, $no_update_action) = @_;
+    my $modxml = $modres->xml;
+
+    my $modname    = $modxml->{name};
+    my $modversion = $modxml->{mmversion};
+    my $checkurl   = $modxml->{updatecheckurl};
+
+    my $ua = LWP::UserAgent->new(agent => $user_agent_string);
+    my $rsp = $ua->get("$checkurl");
+    my $newv = $rsp->decoded_content;
+
+    # If the versions don't parse but are not equal, assume we need to update;
+    # some incorrectly-formatted modules (old MiniUI 1.3, for example), have
+    # non-numeric versions (MiniUI "1.3.*")
+
+    my $newer = eval { (version->parse($newv) > version->parse($modversion)) };
+    my $sub = ($newer or ($@ and $newv ne $modversion))
+                ? $update_action
+                : $no_update_action;
+
+    $sub->($modres, $modversion, $newv) if $sub;
 }
 
 sub nodos
