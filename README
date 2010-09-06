@@ -4,8 +4,7 @@ Newerth, by S2 Games. It reads the .honmod format popularized by the program
 rather inconvenient to use on Linux.
 
 The code is currently in developer pre-alpha stage. It is capable of applying
-some mods, but has not been rigorously tested, and does not support basic
-features such as dependency resolution.
+some mods, but has not been rigorously tested.
 
 Further documentation is forthcoming.
 
