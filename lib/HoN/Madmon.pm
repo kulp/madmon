@@ -253,10 +253,11 @@ sub check_mod_updates
 
     my $ua = LWP::UserAgent->new(agent => $user_agent_string);
     my $rsp = $ua->get("$checkurl");
-    my $newv = $rsp->decoded_content;
+    my $newv = trim $rsp->decoded_content;
 
+    # make sure we have at least three path components
+    my $newer = eval { version->parse("$newv.0.0") > version->parse("$modversion.0.0") };
     # If the versions don't parse but are not equal, assume we need to update
-    my $newer = eval { version->parse($newv) > version->parse($modversion) };
     my $sub = ($newer or ($@ and ($newv ne $modversion)))
                 ? $update_action
                 : $no_update_action;

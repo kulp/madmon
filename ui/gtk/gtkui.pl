@@ -186,8 +186,11 @@ sub addmodbutton_clicked_cb
         $fc->add_shortcut_folder($dl);
     }
 
+    $fc->set_current_folder(dirname $self->{_config}{lastadded}) if $self->{_config}{lastadded};
+
     if ($fc->run eq "ok") {
         my @filenames = $fc->get_filenames;
+        $self->{_config}{lastadded} = $filenames[-1];
         $self->add_mod_file_names(\@filenames, 1);
     }
 
