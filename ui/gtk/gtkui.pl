@@ -165,7 +165,21 @@ sub add_mod_file_names
     }
 
     if (@bads) {
-        $self->_message(warning => "Failed to load the following modules:\n" . join "\n", @bads);
+        #$self->_message(warning => "Failed to load the following modules:\n" . join "\n", @bads);
+        my $dialog = Gtk2::MessageDialog->new($sl->get_toplevel,
+                                              "destroy-with-parent",
+                                              "warning",
+                                              "yes-no",
+                                              "Failed to load the following modules:\n\n%s\n\n" .
+                                              "Do you want to remove them from the auto-load list ?", join "\n", @bads);
+        my $rsp = $dialog->run;
+        if ($rsp eq 'yes') {
+            my %bads = map { $_ => 1 } @bads;
+            @$_ = grep { !$bads{$_} } @$_
+                for @{ $self->{_config} }{qw(disabledmodfile enabledmodfile)};
+        }
+
+        $dialog->destroy;
     }
 }
 
@@ -178,7 +192,7 @@ sub addmodbutton_clicked_cb
             $widget->get_toplevel,
             'open',
             'gtk-cancel' => 'cancel',
-            'gtk-ok'     => 'ok'
+            'gtk-add'    => 'ok'
         );
 
     $fc->set_select_multiple(TRUE);
@@ -186,7 +200,9 @@ sub addmodbutton_clicked_cb
         $fc->add_shortcut_folder($dl);
     }
 
-    $fc->set_current_folder(dirname $self->{_config}{lastadded}) if $self->{_config}{lastadded};
+    if (my $la = $self->{_config}{lastadded}) {
+        $fc->set_current_folder(dirname $la);
+    }
 
     if ($fc->run eq "ok") {
         my @filenames = $fc->get_filenames;
