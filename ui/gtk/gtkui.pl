@@ -47,6 +47,20 @@ sub new
         $self = $class->SUPER::new($tmp->filename);
     }
 
+    # For now we treat the status bar not as a stack but as a queue
+    {
+        my $sb = $self->get_widget('statusbar');
+        my $cid = $sb->get_context_id("general");
+        my @mids;
+        my $status_bar_update = $self->{sbupdate} = sub {
+            (my $clean = shift) =~ s/\p{Cntrl}//g;
+            push @mids, $sb->push($cid, $clean);
+            $sb->remove($cid, shift @mids) if @mids > 1;
+        };
+
+        set_debug_sub($status_bar_update);
+    }
+
     my $tv = $self->get_widget('modtreeview');
     my $sl = Gtk2::Ex::Simple::List->new_from_treeview(
                     $tv, qw(
@@ -130,6 +144,8 @@ sub new
     $self->add_mod_file_names($self->{_config}{enabledmodfile }, 1);
     $self->add_mod_file_names($self->{_config}{disabledmodfile}, 0);
 
+    $self->{sbupdate}->("Ready");
+
     return $self;
 }
 
@@ -165,7 +181,6 @@ sub add_mod_file_names
     }
 
     if (@bads) {
-        #$self->_message(warning => "Failed to load the following modules:\n" . join "\n", @bads);
         my $dialog = Gtk2::MessageDialog->new($sl->get_toplevel,
                                               "destroy-with-parent",
                                               "warning",
@@ -271,6 +286,7 @@ sub _message
 {
     my ($self, $type, $text) = @_;
     my $message = Gtk2::MessageDialog->new($self->get_widget('mainwindow'), [], $type, 'ok', $text);
+    $self->{sbupdate}->($text);
     $message->run;
     $message->destroy;
 }
@@ -332,6 +348,7 @@ sub applymodsbutton_clicked_cb
     my $dp = $self->get_widget('dialogProgress');
     my $p = $self->get_widget('progressbar');
     $p->set_fraction(0);
+    $dp->set_transient_for($widget->get_toplevel);
     $dp->show;
 
     eval {

@@ -1,6 +1,5 @@
 package HoN::Madmon;
 
-#use 5.10.0;
 use base qw(Exporter);
 
 use strict;
@@ -12,13 +11,12 @@ our @EXPORT_OK = qw(
     check_mod_updates
     replace_mod_file
     add_mod_file
+    set_debug_sub
 );
 
 our %EXPORT_TAGS = (
     all => \@EXPORT_OK
 );
-
-use feature qw(say);
 
 use XXX;
 
@@ -40,6 +38,10 @@ use version 0.77;
 our $VERSION = "0.0.1";
 
 our $user_agent_string = __PACKAGE__ . "/$VERSION";
+
+my $debug_sub = sub { print @_, "\n" };
+sub debug { $debug_sub->(@_) }
+sub set_debug_sub { $debug_sub = shift }
 
 # TODO OOPify
 
@@ -144,7 +146,7 @@ sub do_copies
     for my $copy (grep { %$_ } @{ $modxml->{copyfile} }) {
         my $filename = $copy->{name};
         my $source = $copy->{source} || $filename;
-        say "Copying $filename into repo ...";
+        debug "Copying $filename into repo ...";
         if (my $what = $copy->{condition}) {
             if (not check_condition($repores, $modres, $what)) {
                 warn "Conditions not met; skipping copy";
@@ -168,7 +170,7 @@ sub do_edits
     EDIT:
     for my $edits (@{ $modxml->{editfile} }) {
         my $filename = "$edits->{name}"; # force stringification of XML::Smart object
-        say "Editing $filename ...";
+        debug "Editing $filename ...";
 
         if (my $what = $edits->{condition}) {
             if (not check_condition($repores, $modres, $what)) {
@@ -180,7 +182,7 @@ sub do_edits
         # we need to change
         for my $res ($repores, reverse @$res) {
             if (my $file = $res->file($filename)) {
-                say "... found $filename in $res->{filename} ...";
+                debug "... found $filename in $res->{filename} ...";
 
                 my $str = $file->contents;
 
@@ -310,7 +312,6 @@ sub compile_condition
     my @terms = map {
         /^\((.*)\)$/ ? compile_condition($repores, $modres, $1) :
         /^'(.*)'$/   ? do { my $name = $1; sub { $repores->have(fix_mod_name($name)) } } :
-        #/^'(.*)'$/   ? do { my $name = $1; sub { warn $name; $test{$name} } } :
         $_ # default: pass through
     } @textterms;
 
@@ -356,17 +357,17 @@ sub do_edit
             if ($up) {
                 $pos = index substr($$str, 0, $pos), $content;
             } else {
-                $pos = index $$str, $content, $pos; # XXX +1
+                $pos = index $$str, $content, $pos;
             }
             $len = length $content;
         }
-        say "... seeking to $pos ...";
+        debug "... seeking to $pos ...";
     };
 
     my $insert = sub {
         my ($what) = @_;
         my $content = nodos $what->{CONTENT};
-        say "... inserting $len characters ...";
+        debug "... inserting $len characters ...";
         warn "Bad position $pos" and return if $pos < 0;
         for ($what->{position}) {
             /before/ and substr($$str, $pos       , 0) = $content;
@@ -376,7 +377,7 @@ sub do_edit
 
     my $delete = sub {
         my ($what) = @_;
-        say "... deleting $len characters ...";
+        debug "... deleting $len characters ...";
         warn "Bad position $pos" and return if $pos < 0;
         substr($$str, $pos, $len) = "";
     };
@@ -385,7 +386,7 @@ sub do_edit
         my ($what) = @_;
         my $content = nodos $what->{CONTENT};
         my $len2 = length $content;
-        say "... replacing $len characters with $len2 characters ...";
+        debug "... replacing $len characters with $len2 characters ...";
         warn "Bad position $pos" and return if $pos < 0;
         substr($$str, $pos, $len) = $content;
     };

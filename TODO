@@ -1,3 +1,6 @@
 Order of application
 Support <applybefore/>
 Better GUI responsiveness (may need threading)
+Automatic enabling of dependencies
+Automatic disabling of mods incompatible with game version
+Automatic disabling of mutually incompatible mods

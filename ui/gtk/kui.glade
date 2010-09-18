@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <!DOCTYPE glade-interface SYSTEM "glade-2.0.dtd">
-<!--Generated with glade3 3.4.5 on Mon Sep  6 11:04:50 2010 -->
+<!--Generated with glade3 3.4.5 on Sat Sep 18 09:24:36 2010 -->
 <glade-interface>
   <widget class="GtkWindow" id="mainwindow">
     <property name="width_request">750</property>
@@ -150,9 +150,6 @@
           </packing>
         </child>
         <child>
-          <placeholder/>
-        </child>
-        <child>
           <widget class="GtkVBox" id="vbox2">
             <property name="visible">True</property>
             <child>
@@ -258,25 +255,6 @@
                   </packing>
                 </child>
                 <child>
-                  <widget class="GtkButton" id="delmodbutton">
-                    <property name="width_request">114</property>
-                    <property name="height_request">36</property>
-                    <property name="visible">True</property>
-                    <property name="can_focus">True</property>
-                    <property name="receives_default">True</property>
-                    <property name="label" translatable="yes">gtk-remove</property>
-                    <property name="use_stock">True</property>
-                    <property name="response_id">1</property>
-                    <signal name="clicked" handler="delmodbutton_clicked_cb"/>
-                  </widget>
-                  <packing>
-                    <property name="expand">False</property>
-                    <property name="padding">5</property>
-                    <property name="pack_type">GTK_PACK_END</property>
-                    <property name="position">1</property>
-                  </packing>
-                </child>
-                <child>
                   <widget class="GtkButton" id="addmodbutton">
                     <property name="width_request">114</property>
                     <property name="height_request">36</property>
@@ -296,6 +274,25 @@
                     <property name="position">1</property>
                   </packing>
                 </child>
+                <child>
+                  <widget class="GtkButton" id="delmodbutton">
+                    <property name="width_request">114</property>
+                    <property name="height_request">36</property>
+                    <property name="visible">True</property>
+                    <property name="can_focus">True</property>
+                    <property name="receives_default">True</property>
+                    <property name="label" translatable="yes">gtk-remove</property>
+                    <property name="use_stock">True</property>
+                    <property name="response_id">1</property>
+                    <signal name="clicked" handler="delmodbutton_clicked_cb"/>
+                  </widget>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="padding">5</property>
+                    <property name="pack_type">GTK_PACK_END</property>
+                    <property name="position">1</property>
+                  </packing>
+                </child>
               </widget>
               <packing>
                 <property name="expand">False</property>
@@ -305,8 +302,18 @@
             </child>
           </widget>
           <packing>
-            <property name="pack_type">GTK_PACK_END</property>
             <property name="position">1</property>
+          </packing>
+        </child>
+        <child>
+          <widget class="GtkStatusbar" id="statusbar">
+            <property name="visible">True</property>
+            <property name="spacing">2</property>
+          </widget>
+          <packing>
+            <property name="expand">False</property>
+            <property name="pack_type">GTK_PACK_END</property>
+            <property name="position">2</property>
           </packing>
         </child>
       </widget>
